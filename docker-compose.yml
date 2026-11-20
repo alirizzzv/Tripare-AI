@@ -1,0 +1,29 @@
+services:
+  redis:
+    # Pin patch tag (AGENTS.md); 7.4.12 is the current Redis 7.x.y on Docker Hub.
+    image: redis:7.4.12
+    ports:
+      - "${REDIS_PUBLISH_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  temporal:
+    # Pin exact version (Prompt 3 item 7)
+    image: temporalio/temporal:1.26.2
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--db-filename", "/var/lib/temporal/dev.db"]
+    ports:
+      - "7233:7233"
+      - "8233:8233"
+    volumes:
+      - temporal_data:/var/lib/temporal
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  temporal_data:
