@@ -65,6 +65,22 @@ export function createApp(options: CreateAppOptions = {}): Express {
     res.status(200).json({ ok: true });
   });
 
+  // Landing route so the bare URL is self-explanatory (instead of a 404).
+  app.get('/', (_req: Request, res: Response) => {
+    res.status(200).json({
+      service: 'Hotel Offer Orchestrator',
+      source: 'https://github.com/alirizzzv/Tripare-AI',
+      endpoints: {
+        hotels: '/api/hotels?city=delhi',
+        priceFilter: '/api/hotels?city=delhi&minPrice=5000&maxPrice=6000',
+        noResults: '/api/hotels?city=jaipur',
+        health: '/health',
+        supplierA: '/supplierA/hotels?city=delhi',
+        supplierB: '/supplierB/hotels?city=delhi',
+      },
+    });
+  });
+
   // Mock supplier APIs (INSIDE this same service)
   app.use('/supplierA', createMockSupplierRouter('supplierA'));
   app.use('/supplierB', createMockSupplierRouter('supplierB'));

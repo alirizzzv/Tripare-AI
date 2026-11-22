@@ -11,6 +11,15 @@ describe('GET /ping', () => {
   });
 });
 
+describe('GET /', () => {
+  it('returns a JSON index of the endpoints instead of a 404', async () => {
+    const res = await request(app).get('/');
+    expect(res.status).toBe(200);
+    expect(res.body.endpoints.hotels).toBe('/api/hotels?city=delhi');
+    expect(res.body.endpoints.health).toBe('/health');
+  });
+});
+
 describe('unknown route', () => {
   it('returns JSON 404 shape', async () => {
     const res = await request(app).get('/no-such-route');
