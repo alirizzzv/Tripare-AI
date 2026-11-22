@@ -1,6 +1,31 @@
+# Local / reviewer stack:  docker compose up --build
+#   API          http://localhost:3000
+#   Temporal UI  http://localhost:8233
+# Every value has a default, so no .env is needed. See .env.example for overrides.
+# Production overlay: docker-compose.prod.yml (does NOT publish redis/temporal/api ports).
+
+x-app-env: &app-env
+  NODE_ENV: production
+  PORT: "3000"
+  REDIS_URL: redis://redis:6379
+  TEMPORAL_ADDRESS: temporal:7233
+  TEMPORAL_NAMESPACE: default
+  TEMPORAL_TASK_QUEUE: hotel-offers
+  # WHY: inside Compose, "localhost" is the container itself; the mocks live in the api service.
+  SUPPLIER_A_URL: http://api:3000/supplierA
+  SUPPLIER_B_URL: http://api:3000/supplierB
+  SUPPLIER_TIMEOUT_MS: ${SUPPLIER_TIMEOUT_MS:-2500}
+  CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-600}
+  DEGRADED_TTL_SECONDS: ${DEGRADED_TTL_SECONDS:-60}
+  WORKFLOW_WAIT_MS: ${WORKFLOW_WAIT_MS:-8000}
+  # Chaos routes are ON locally so the Postman "Resilience" folder can simulate outages.
+  ENABLE_CHAOS: ${ENABLE_CHAOS:-true}
+  CHAOS_TOKEN: ${CHAOS_TOKEN:-}
+  CHAOS_TTL_SECONDS: ${CHAOS_TTL_SECONDS:-60}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
 services:
   redis:
-    # Pin patch tag (AGENTS.md); 7.4.12 is the current Redis 7.x.y on Docker Hub.
     image: redis:7.4.12
     ports:
       - "${REDIS_PUBLISH_PORT:-6379}:6379"
@@ -11,19 +36,71 @@ services:
       retries: 10
 
   temporal:
-    # Pin exact version (Prompt 3 item 7)
-    image: temporalio/temporal:1.26.2
-    command: ["server", "start-dev", "--ip", "0.0.0.0", "--db-filename", "/var/lib/temporal/dev.db"]
+    # temporalio/temporal is the Temporal CLI image; `server start-dev` runs a single-binary
+    # dev server (SQLite) with the Web UI on 8233. Tag verified on Docker Hub.
+    image: temporalio/temporal:1.10.0
+    command:
+      - server
+      - start-dev
+      - --ip
+      - 0.0.0.0
+      - --db-filename
+      - /home/temporal/temporal.db
     ports:
-      - "7233:7233"
-      - "8233:8233"
+      - "${TEMPORAL_PUBLISH_PORT:-7233}:7233"
+      - "${TEMPORAL_UI_PUBLISH_PORT:-8233}:8233"
     volumes:
-      - temporal_data:/var/lib/temporal
+      # WHY /home/temporal: the image runs as uid 1000 and that directory already belongs to it,
+      # so a fresh named volume inherits writable ownership. (A new path like /var/lib/temporal
+      # would be created root-owned and the server could not write its DB.)
+      - temporal_data:/home/temporal
     healthcheck:
-      test: ["CMD", "temporal", "operator", "cluster", "health"]
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "127.0.0.1:7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  api:
+    build: .
+    image: hotel-offer-orchestrator:local
+    command: ["node", "dist/api/server.js"]
+    environment: *app-env
+    ports:
+      - "${API_PUBLISH_PORT:-3000}:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    # Liveness only. NEVER /health here: /health is "down" until a worker polls, and the
+    # worker does not wait for the api, so using it would deadlock startup (AGENTS.md D12).
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
       interval: 5s
       timeout: 3s
       retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  worker:
+    build: .
+    image: hotel-offer-orchestrator:local
+    command: ["node", "dist/temporal/worker.js"]
+    environment: *app-env
+    # Depends on temporal + redis only, never on api (the worker also retries its connection).
+    depends_on:
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    restart: unless-stopped
 
 volumes:
   temporal_data:

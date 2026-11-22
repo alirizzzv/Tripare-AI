@@ -17,6 +17,9 @@
     "test": "vitest run --config vitest.config.ts",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:postman": "npx --yes newman@6.2.3 run postman/Hotel-Offer-Orchestrator.postman_collection.json -e postman/local.postman_environment.json",
+    "test:postman:live": "npx --yes newman@6.2.3 run postman/Hotel-Offer-Orchestrator.postman_collection.json -e postman/live.postman_environment.json",
+    "smoke": "bash scripts/smoke.sh",
     "format": "prettier --write ."
   },
   "dependencies": {
