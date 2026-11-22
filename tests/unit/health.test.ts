@@ -115,7 +115,7 @@ describe('GET /health endpoint', () => {
 
   it('returns 503 "down" when Redis is unreachable', async () => {
     const mockRedis = {
-      ping: vi.fn().mockRejectedValue(new Error('Redis connection refused')),
+      ping: vi.fn().mockRejectedValue(new Error('connect ECONNREFUSED 172.18.0.3:6379')),
     } as unknown as Redis;
 
     const mockFetch = vi.fn().mockResolvedValue({
@@ -136,6 +136,9 @@ describe('GET /health endpoint', () => {
     expect(res.status).toBe(503);
     expect(res.body.status).toBe('down');
     expect(res.body.dependencies.redis.status).toBe('down');
+    // Regression (I13): raw error text with internal IPs must not reach the client.
+    expect(res.body.dependencies.redis.error).toBe('unreachable');
+    expect(JSON.stringify(res.body)).not.toContain('172.18.0.3');
   });
 
   it('returns 503 "down" when Temporal is unreachable', async () => {
@@ -161,6 +164,28 @@ describe('GET /health endpoint', () => {
     expect(res.status).toBe(503);
     expect(res.body.status).toBe('down');
     expect(res.body.dependencies.temporal.status).toBe('down');
+    expect(res.body.dependencies.temporal.error).toBe('unreachable');
+  });
+
+  it('times out a hung Temporal connect within ~1s instead of hanging', async () => {
+    const mockRedis = { ping: vi.fn().mockResolvedValue('PONG') } as unknown as Redis;
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    const hangingClient = () => new Promise<Client>(() => {});
+
+    const app = createApp({
+      healthRouter: createHealthRouter({
+        env: testEnv(),
+        redis: mockRedis,
+        fetchFn: mockFetch as unknown as typeof fetch,
+        temporalClient: hangingClient,
+      }),
+    });
+
+    const started = Date.now();
+    const res = await request(app).get('/health');
+    expect(Date.now() - started).toBeLessThan(2500);
+    expect(res.status).toBe(503);
+    expect(res.body.dependencies.temporal.error).toBe('timeout');
   });
 
   it('returns 503 "down" when no Temporal worker is polling the task queue', async () => {

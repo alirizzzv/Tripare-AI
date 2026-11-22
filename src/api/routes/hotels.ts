@@ -60,6 +60,14 @@ function rejectRepeatedParams(query: Request['query'], checkedKeys: readonly str
   }
 }
 
+/** Client-facing 400 details: which field failed and why (no internal Zod structure). */
+function fieldIssues(
+  field: string,
+  issues: readonly { message: string }[],
+): { field: string; message: string }[] {
+  return issues.map((issue) => ({ field, message: issue.message }));
+}
+
 function setDegradedHeaders(
   res: Response,
   degraded: boolean,
@@ -104,7 +112,7 @@ export function createHotelsRouter(deps: HotelsRouterDependencies = {}): Router 
       if (!cityResult.success) {
         throw new ValidationError(
           cityResult.error.issues.map((i) => i.message).join('; '),
-          cityResult.error.flatten(),
+          fieldIssues('city', cityResult.error.issues),
         );
       }
 
@@ -121,7 +129,7 @@ export function createHotelsRouter(deps: HotelsRouterDependencies = {}): Router 
         if (!minParsed.success) {
           throw new ValidationError(
             minParsed.error.issues.map((i) => i.message).join('; '),
-            minParsed.error.flatten(),
+            fieldIssues('minPrice', minParsed.error.issues),
           );
         }
         minPrice = minParsed.data;
@@ -136,14 +144,16 @@ export function createHotelsRouter(deps: HotelsRouterDependencies = {}): Router 
         if (!maxParsed.success) {
           throw new ValidationError(
             maxParsed.error.issues.map((i) => i.message).join('; '),
-            maxParsed.error.flatten(),
+            fieldIssues('maxPrice', maxParsed.error.issues),
           );
         }
         maxPrice = maxParsed.data;
       }
 
       if (minPrice !== undefined && maxPrice !== undefined && minPrice > maxPrice) {
-        throw new ValidationError('minPrice must not exceed maxPrice');
+        throw new ValidationError('minPrice must not exceed maxPrice', [
+          { field: 'minPrice', message: 'must be less than or equal to maxPrice' },
+        ]);
       }
 
       // 4. Validate refresh flag

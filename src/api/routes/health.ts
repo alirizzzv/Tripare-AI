@@ -45,25 +45,44 @@ export type HealthCheckDependencies = {
     | (() => ReturnType<typeof getTemporalClient>);
 };
 
+class HealthTimeoutError extends Error {
+  constructor() {
+    super('timeout');
+    this.name = 'TimeoutError';
+  }
+}
+
+/**
+ * Invariant I10/I13: /health is public, so it reports a short fixed vocabulary instead of raw
+ * error messages (which can contain internal hostnames/IPs). Full errors go to the logs.
+ */
+function publicError(err: unknown): 'timeout' | 'unreachable' {
+  const isTimeout =
+    err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError');
+  return isTimeout ? 'timeout' : 'unreachable';
+}
+
 async function checkRedisHealth(redis: Redis, timeoutMs = 1000): Promise<DependencyHealth> {
   const start = Date.now();
+  let timer: NodeJS.Timeout | undefined;
   try {
     const pingPromise = redis.ping();
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Redis ping timed out')), timeoutMs),
-    );
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new HealthTimeoutError()), timeoutMs);
+    });
     const result = await Promise.race([pingPromise, timeoutPromise]);
     const latencyMs = Date.now() - start;
     if (result === 'PONG') {
       return { status: 'ok', latencyMs };
     }
-    return { status: 'down', latencyMs, error: `Unexpected Redis response: ${result}` };
+    return { status: 'down', latencyMs, error: 'unexpected response' };
   } catch (err) {
-    return {
-      status: 'down',
-      latencyMs: Date.now() - start,
-      error: err instanceof Error ? err.message : String(err),
-    };
+    logger.warn({ err }, 'health: redis check failed');
+    return { status: 'down', latencyMs: Date.now() - start, error: publicError(err) };
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
   }
 }
 
@@ -90,13 +109,7 @@ async function checkSupplierHealth(
     return { status: 'down', latencyMs, error: `HTTP ${response.status}` };
   } catch (err) {
     clearTimeout(timer);
-    const isAbort =
-      err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError');
-    return {
-      status: 'down',
-      latencyMs: Date.now() - start,
-      error: isAbort ? 'Timed out after 1000ms' : err instanceof Error ? err.message : String(err),
-    };
+    return { status: 'down', latencyMs: Date.now() - start, error: publicError(err) };
   }
 }
 
@@ -106,18 +119,22 @@ async function checkTemporalHealth(
   timeoutMs = 1000,
 ): Promise<DependencyHealth & { workerPolling: { status: 'ok' | 'down'; pollersCount: number } }> {
   const start = Date.now();
+  let timer: NodeJS.Timeout | undefined;
   try {
-    const client = typeof clientOrFn === 'function' ? await clientOrFn() : await clientOrFn;
-    const describePromise = client.workflowService.describeTaskQueue({
-      namespace: env.TEMPORAL_NAMESPACE,
-      taskQueue: { name: env.TEMPORAL_TASK_QUEUE },
+    // WHY: the timeout covers connecting AND describeTaskQueue; a hung first connect must not
+    // make /health hang (rejected: timing only the describe call).
+    const describe = async () => {
+      const client = typeof clientOrFn === 'function' ? await clientOrFn() : await clientOrFn;
+      return client.workflowService.describeTaskQueue({
+        namespace: env.TEMPORAL_NAMESPACE,
+        taskQueue: { name: env.TEMPORAL_TASK_QUEUE },
+      });
+    };
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new HealthTimeoutError()), timeoutMs);
     });
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Temporal check timed out')), timeoutMs),
-    );
-
-    const tqInfo = await Promise.race([describePromise, timeoutPromise]);
+    const tqInfo = await Promise.race([describe(), timeoutPromise]);
     const latencyMs = Date.now() - start;
 
     const pollers = tqInfo.pollers ?? [];
@@ -133,15 +150,20 @@ async function checkTemporalHealth(
       },
     };
   } catch (err) {
+    logger.warn({ err }, 'health: temporal check failed');
     return {
       status: 'down',
       latencyMs: Date.now() - start,
-      error: err instanceof Error ? err.message : String(err),
+      error: publicError(err),
       workerPolling: {
         status: 'down',
         pollersCount: 0,
       },
     };
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
   }
 }
 
@@ -153,7 +175,8 @@ export function createHealthRouter(deps: HealthCheckDependencies = {}): Router {
       const env = deps.env ?? getEnv();
       const redis = deps.redis ?? getRedis();
       const customFetch = deps.fetchFn ?? fetch;
-      const temporalClient = deps.temporalClient ?? getTemporalClient();
+      // Pass the factory (not a started promise) so connecting happens inside the 1s timeout.
+      const temporalClient = deps.temporalClient ?? getTemporalClient;
 
       const [redisHealth, supplierAHealth, supplierBHealth, temporalHealth] =
         await Promise.all([

@@ -18,11 +18,8 @@ export async function getTemporalConnection(): Promise<Connection> {
       });
     } catch (err) {
       logger.error({ err, address: env.TEMPORAL_ADDRESS }, 'failed to connect to temporal server');
-      throw new ServiceUnavailableError(
-        'ORCHESTRATOR_UNAVAILABLE',
-        'Temporal orchestrator unavailable',
-        err instanceof Error ? err.message : String(err),
-      );
+      // WHY: details stay in logs only; clients never see internal addresses or stack text (I13).
+      throw new ServiceUnavailableError('ORCHESTRATOR_UNAVAILABLE', 'Temporal orchestrator unavailable');
     }
   }
   return connection;
@@ -75,11 +72,8 @@ export async function runHotelWorkflow(
     if (err instanceof ServiceUnavailableError) {
       throw err;
     }
-    throw new ServiceUnavailableError(
-      'ORCHESTRATOR_UNAVAILABLE',
-      'Temporal orchestrator unavailable',
-      err instanceof Error ? err.message : String(err),
-    );
+    logger.error({ err }, 'failed to create temporal client');
+    throw new ServiceUnavailableError('ORCHESTRATOR_UNAVAILABLE', 'Temporal orchestrator unavailable');
   }
 
   let handle;
@@ -96,11 +90,7 @@ export async function runHotelWorkflow(
     );
   } catch (err) {
     logger.error({ err, workflowId, city: normalizedCity }, 'failed to start temporal workflow');
-    throw new ServiceUnavailableError(
-      'ORCHESTRATOR_UNAVAILABLE',
-      'Temporal orchestrator unavailable',
-      err instanceof Error ? err.message : String(err),
-    );
+    throw new ServiceUnavailableError('ORCHESTRATOR_UNAVAILABLE', 'Temporal orchestrator unavailable');
   }
 
   let result: HotelWorkflowResult;
@@ -122,27 +112,22 @@ export async function runHotelWorkflow(
     }
   } catch (err) {
     if (err instanceof GatewayTimeoutError) {
+      logger.warn({ workflowId, waitMs }, 'workflow still running after wait budget; returning 504');
       throw err;
     }
 
     if (err instanceof WorkflowFailedError) {
       logger.error({ err, workflowId }, 'workflow execution failed');
-      throw new ServiceUnavailableError(
-        'WORKFLOW_FAILED',
-        'Workflow execution failed',
-        err.cause ? String(err.cause) : err.message,
-      );
+      throw new ServiceUnavailableError('WORKFLOW_FAILED', 'Workflow execution failed');
     }
 
-    throw new ServiceUnavailableError(
-      'WORKFLOW_FAILED',
-      'Workflow execution failed',
-      err instanceof Error ? err.message : String(err),
-    );
+    logger.error({ err, workflowId }, 'unexpected error while awaiting workflow result');
+    throw new ServiceUnavailableError('WORKFLOW_FAILED', 'Workflow execution failed');
   }
 
   // If both suppliers failed in the workflow (Invariant I2)
   if (result.status === 'ALL_FAILED') {
+    logger.warn({ workflowId, city: normalizedCity }, 'both suppliers failed; nothing cached');
     throw new ServiceUnavailableError(
       'SUPPLIERS_UNAVAILABLE',
       'Both suppliers are currently unavailable',

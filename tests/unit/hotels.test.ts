@@ -53,6 +53,14 @@ describe('GET /api/hotels validation & error contract (Decision 14)', () => {
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
+  it('400 details name the failing field', async () => {
+    const res = await request(app).get('/api/hotels?city=delhi&minPrice=abc');
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual([
+      { field: 'minPrice', message: expect.any(String) },
+    ]);
+  });
+
   it('400 on negative price', async () => {
     const res = await request(app).get('/api/hotels?city=delhi&minPrice=-10');
     expect(res.status).toBe(400);
