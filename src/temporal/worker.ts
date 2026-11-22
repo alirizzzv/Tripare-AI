@@ -73,18 +73,24 @@ export async function runWorker(): Promise<void> {
     'temporal worker started, listening for workflow tasks',
   );
 
-  const shutdown = async (signal: string) => {
-    logger.info({ signal }, 'shutting down temporal worker...');
+  // WHY: only ask the worker to stop here. Redis and the Temporal connection are closed AFTER
+  // worker.run() resolves, i.e. after in-flight activities (e.g. persistOffers) have finished.
+  // (Rejected: closing Redis inside the signal handler, which could fail a running persist.)
+  const shutdown = (signal: string) => {
+    logger.info({ signal }, 'shutting down temporal worker (draining in-flight tasks)...');
     worker.shutdown();
-    await closeRedis();
   };
 
-  process.on('SIGINT', () => void shutdown('SIGINT'));
-  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
 
-  await worker.run();
-  await connection.close();
-  logger.info('temporal worker stopped');
+  try {
+    await worker.run();
+  } finally {
+    await closeRedis();
+    await connection.close();
+    logger.info('temporal worker stopped');
+  }
 }
 
 if (require.main === module) {

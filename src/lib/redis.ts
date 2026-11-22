@@ -9,6 +9,9 @@ export type RedisClient = Redis;
 export function createRedis(url: string): Redis {
   const redis = new Redis(url, {
     maxRetriesPerRequest: 3,
+    // WHY: fail a request fast when Redis is unreachable so the API returns 503 CACHE_UNAVAILABLE
+    // in ~seconds instead of hanging on the 10s default connect timeout.
+    connectTimeout: 2000,
     // WHY: exponential cap at 2s so a dead Redis does not retry-storm (rejected: infinite immediate reconnect).
     retryStrategy(times) {
       return Math.min(times * 50, 2000);
