@@ -6,7 +6,8 @@ hotel and serves price-filtered results from Redis. A Temporal workflow does the
 [![CI](https://github.com/alirizzzv/Tripare-AI/actions/workflows/ci.yml/badge.svg)](https://github.com/alirizzzv/Tripare-AI/actions/workflows/ci.yml)
 
 **Stack:** Node.js 22 + TypeScript (strict), Express 5, Temporal (TypeScript SDK), Redis 7, Docker Compose, Caddy.
-**Live URL:** TODO (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md))
+**Live demo:** <https://tripare-ai.onrender.com>, e.g. [`/api/hotels?city=delhi`](https://tripare-ai.onrender.com/api/hotels?city=delhi) · [`/health`](https://tripare-ai.onrender.com/health)
+(free plan: the first request after it sleeps can take about a minute; see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md))
 
 ---
 
