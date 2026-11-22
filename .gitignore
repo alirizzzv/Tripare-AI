@@ -6,3 +6,5 @@ docs/INTERVIEW_NOTES.md
 *.log
 .DS_Store
 .tokensave
+AGENTS.md
+CLAUDE.md
