@@ -1,10 +1,12 @@
 name: keep-warm
 
-# Free Hugging Face Spaces sleep after ~48h without traffic. Ping the live demo twice a day
-# and run the smoke test so a broken deployment is noticed. Set the repo variable LIVE_URL
-# (Settings -> Secrets and variables -> Actions -> Variables) to enable it.
+# Render's free plan sleeps a service after 15 minutes without traffic (the next request then
+# waits for a cold start). Ping the live demo every 10 minutes, and twice a day also run the full
+# smoke test so a broken deployment is noticed. Enable it by setting the repo variable LIVE_URL
+# (Settings -> Secrets and variables -> Actions -> Variables), e.g. https://tripare-ai.onrender.com
 on:
   schedule:
+    - cron: "*/10 * * * *"
     - cron: "17 3,15 * * *"
   workflow_dispatch:
 
@@ -15,14 +17,16 @@ jobs:
   ping:
     if: ${{ vars.LIVE_URL != '' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - name: Wake the Space (cold start can take a few minutes)
+      - name: Ping (waits through a cold start)
         run: |
-          for i in $(seq 1 30); do
-            curl -fsS --max-time 20 "${{ vars.LIVE_URL }}/ping" && exit 0
-            sleep 20
+          for i in $(seq 1 20); do
+            curl -fsS --max-time 30 "${{ vars.LIVE_URL }}/ping" && exit 0
+            sleep 15
           done
           exit 1
-      - run: ./scripts/wait-healthy.sh "${{ vars.LIVE_URL }}" 300
-      - run: ./scripts/smoke.sh "${{ vars.LIVE_URL }}"
+      - if: github.event.schedule != '*/10 * * * *'
+        uses: actions/checkout@v4
+      - if: github.event.schedule != '*/10 * * * *'
+        run: ./scripts/wait-healthy.sh "${{ vars.LIVE_URL }}" 300 && ./scripts/smoke.sh "${{ vars.LIVE_URL }}"

@@ -2,39 +2,39 @@
 
 Two options:
 
-- **A. Free live demo on Hugging Face Spaces** (what the live URL uses): one container, no card needed.
+- **A. Free live demo on Render** (what the live URL uses): one container on the free plan, no card needed.
 - **B. Single VM with HTTPS** (the production-style setup): same Compose stack as local + Caddy.
 
-## A. Hugging Face Space (free)
+## A. Render free plan (single container)
 
-Spaces expose one port and run one container, so `deploy/huggingface/Dockerfile` packs the same four
-processes (Redis, Temporal dev server, worker, API) into one image, started by `deploy/huggingface/start.sh`.
+Free hosts give one container and one port, so `deploy/single-container/Dockerfile` packs the same four
+processes (Redis, Temporal dev server, worker, API) into one image, started by `deploy/single-container/start.sh`.
 If any process exits, the container exits and the platform restarts it. Redis and Temporal listen on
-`127.0.0.1` only, so only the API port (7860) is reachable, over HTTPS.
+`127.0.0.1` only; only the API port is reachable, over Render's HTTPS. Workflow code is pre-bundled at
+build time so the worker does not run webpack at start-up (the free plan has 512 MB RAM).
 
-1. On huggingface.co: **New Space** → name `tripare-ai` → SDK **Docker** → **Blank** → hardware **CPU basic (free)** → Public → Create.
-2. Space **Settings → Variables and secrets → New secret**: `CHAOS_TOKEN` = output of `openssl rand -hex 24`.
-   (Without it, `start.sh` disables the chaos routes.)
-3. Create a **write** access token at huggingface.co/settings/tokens.
-4. From the repo, with everything committed:
+1. Test the image locally with the same memory limit:
    ```bash
-   ./scripts/publish-hf-space.sh <hf-user>/tripare-ai
-   # username: your HF username, password: the write token
+   docker build -f deploy/single-container/Dockerfile -t tripare-single .
+   docker run --rm -d --name tripare-single -p 10000:10000 -m 512m -e CHAOS_TOKEN=test tripare-single
+   ./scripts/wait-healthy.sh http://localhost:10000 180 && ./scripts/smoke.sh http://localhost:10000
+   docker stats --no-stream tripare-single     # memory use
+   docker stop tripare-single
    ```
-5. Watch the **Logs** tab until `api listening` and `temporal worker started` appear, then:
+2. Push to GitHub. In the Render dashboard: **New → Blueprint** → connect `alirizzzv/Tripare-AI` →
+   Render reads `render.yaml` (free web service, Docker, health check `/ping`, random `CHAOS_TOKEN`) → **Apply**.
+3. When the deploy is live, copy the URL (e.g. `https://tripare-ai.onrender.com`) and the generated
+   `CHAOS_TOKEN` (service → Environment), then check it:
    ```bash
-   ./scripts/wait-healthy.sh https://<hf-user>-tripare-ai.hf.space 300
-   ./scripts/smoke.sh https://<hf-user>-tripare-ai.hf.space
-   npm run test:postman:live -- --env-var baseUrl=https://<hf-user>-tripare-ai.hf.space --env-var chaosToken=<token>
+   ./scripts/wait-healthy.sh https://tripare-ai.onrender.com 300
+   ./scripts/smoke.sh https://tripare-ai.onrender.com
    ```
-6. Optional: set the GitHub repo variable `LIVE_URL` so `.github/workflows/keep-warm.yml` pings the
-   Space twice a day (free Spaces sleep after ~48 h idle) and runs the smoke test.
+   and run Postman against it (`test:postman:live` with `--env-var baseUrl=... --env-var chaosToken=...`).
+4. Set the GitHub repo variable `LIVE_URL` to that URL. `.github/workflows/keep-warm.yml` then pings it
+   every 10 minutes (the free plan sleeps after 15 idle minutes) and runs the smoke test twice a day.
 
-Test the image locally first: `docker build -f deploy/huggingface/Dockerfile -t tripare-space . &&
-docker run --rm -p 7860:7860 -e CHAOS_TOKEN=test tripare-space`, then `./scripts/smoke.sh http://localhost:7860`.
-
-Limits: Temporal state is in memory (resets on restart; the cache refills on the next request) and the
-Temporal UI is not exposed. A free Space may cold-start after sleeping.
+Limits: 512 MB / shared CPU, so the first request after a cold start is slow; Temporal state is in memory
+(resets on restart; the cache refills on the next request); the Temporal UI is not exposed.
 
 ---
 

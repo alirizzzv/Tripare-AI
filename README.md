@@ -229,9 +229,9 @@ Import `postman/Hotel-Offer-Orchestrator.postman_collection.json` and `postman/l
 
 ## Deployment
 
-**Live demo (free):** a Hugging Face Docker Space runs the same code with Redis, the Temporal dev server,
-the worker and the API in one container (Spaces allow one container and one port); Redis and Temporal
-listen on `127.0.0.1` only. See `deploy/huggingface/` and `scripts/publish-hf-space.sh`.
+**Live demo (free):** Render's free plan runs the same code from `deploy/single-container/Dockerfile`
+(Redis, Temporal dev server, worker and API in one container, because free hosts allow one container
+and one port); Redis and Temporal listen on `127.0.0.1` only. Configured by `render.yaml`.
 
 **Production-style:** single VM, same Compose stack + `docker-compose.prod.yml` + Caddy for automatic HTTPS. Redis, the API and
 Temporal gRPC are **not published**; the Temporal UI is bound to `127.0.0.1` and reached via an SSH tunnel.
@@ -281,8 +281,8 @@ src/
   temporal/       workflows.ts, activities.ts, worker.ts, constants.ts
 tests/unit, tests/integration
 postman/          collection + local/live environments
-scripts/          smoke.sh, wait-healthy.sh, bootstrap-vm.sh, deploy.sh, publish-hf-space.sh
-deploy/huggingface/  single-container image for the free live demo
+scripts/          smoke.sh, wait-healthy.sh, bootstrap-vm.sh, deploy.sh
+deploy/single-container/  one-container image for the free live demo (render.yaml)
 docs/DEPLOYMENT.md
 Dockerfile, docker-compose.yml, docker-compose.prod.yml, Caddyfile, Makefile
 ```

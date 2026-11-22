@@ -44,11 +44,23 @@ function resolveWorkflowsPath(): string {
   return require.resolve('./workflows');
 }
 
+/**
+ * WHY: the build pre-bundles the workflow code (src/temporal/bundleWorkflows.ts). Loading that
+ * file skips running webpack inside the worker at start-up, which saves memory and CPU on small
+ * hosts. In dev (tsx) there is no bundle, so we fall back to bundling from source.
+ * (Rejected: always bundling at start-up.)
+ */
+function resolvePrebuiltBundle(): string | undefined {
+  const bundlePath = path.join(__dirname, 'workflow-bundle.js');
+  return fs.existsSync(bundlePath) ? bundlePath : undefined;
+}
+
 export async function runWorker(): Promise<void> {
   const env = getEnv();
   const redis = getRedis();
   const connection = await connectWithRetry(env.TEMPORAL_ADDRESS);
-  const workflowsPath = resolveWorkflowsPath();
+  const bundlePath = resolvePrebuiltBundle();
+  const workflowsPath = bundlePath ? undefined : resolveWorkflowsPath();
 
   const activities = createActivities({
     config: env,
@@ -60,7 +72,7 @@ export async function runWorker(): Promise<void> {
     connection,
     namespace: env.TEMPORAL_NAMESPACE,
     taskQueue: env.TEMPORAL_TASK_QUEUE,
-    workflowsPath,
+    ...(bundlePath ? { workflowBundle: { codePath: bundlePath } } : { workflowsPath }),
     activities,
   });
 
@@ -68,7 +80,8 @@ export async function runWorker(): Promise<void> {
     {
       taskQueue: env.TEMPORAL_TASK_QUEUE,
       namespace: env.TEMPORAL_NAMESPACE,
-      workflowsPath,
+      workflowCode: bundlePath ?? workflowsPath,
+      prebundled: bundlePath !== undefined,
     },
     'temporal worker started, listening for workflow tasks',
   );

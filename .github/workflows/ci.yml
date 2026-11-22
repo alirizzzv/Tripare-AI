@@ -50,3 +50,17 @@ jobs:
         run: docker compose ps && docker compose logs --no-color --tail=200
       - if: always()
         run: docker compose down -v
+
+  single-container:
+    # The free live-demo image must start and pass the smoke test inside 512 MB (Render free plan).
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f deploy/single-container/Dockerfile -t tripare-single .
+      - run: docker run -d --name single -p 10000:10000 -m 512m -e CHAOS_TOKEN=ci tripare-single
+      - run: ./scripts/wait-healthy.sh http://localhost:10000 180
+      - run: ./scripts/smoke.sh http://localhost:10000
+      - run: docker stats --no-stream single
+      - if: failure()
+        run: docker logs single --tail 200
