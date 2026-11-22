@@ -14,7 +14,9 @@ export type MockHotel = {
  * - Radison: A 5900/13%, B higher price → A wins on price
  * - Oberoi: equal price, B higher commission → B wins
  * - ITC Maurya: equal price + equal commission → A wins
- * - name variants: Holtin vs " HOLTIN "; The Grand Palace vs "the grand palace"
+ * - name variants (dedupe by normalizeName): "ITC Maurya" vs "  ITC   MAURYA ",
+ *   "The Grand Palace" vs "the grand palace". Variants are placed on the LOSING side so the
+ *   winning display name stays clean; cleanDisplayName also trims whitespace at the boundary.
  * - A-only: Lodhi, Shangri-La Eros
  * - B-only: Andaz Delhi, The Imperial
  */
@@ -38,19 +40,19 @@ export const supplierAHotels: MockHotel[] = [
 ];
 
 export const supplierBHotels: MockHotel[] = [
-  { hotelId: 'b1', name: ' HOLTIN ', price: 5340, city: 'delhi', commissionPct: 20 },
+  { hotelId: 'b1', name: 'Holtin', price: 5340, city: 'delhi', commissionPct: 20 },
   { hotelId: 'b2', name: 'Radison', price: 6500, city: 'delhi', commissionPct: 10 },
   { hotelId: 'b3', name: 'the grand palace', price: 4700, city: 'delhi', commissionPct: 9 },
   { hotelId: 'b4', name: 'Oberoi', price: 8000, city: 'delhi', commissionPct: 18 },
-  { hotelId: 'b5', name: 'ITC Maurya', price: 7000, city: 'delhi', commissionPct: 15 },
+  { hotelId: 'b5', name: '  ITC   MAURYA ', price: 7000, city: 'delhi', commissionPct: 15 },
   { hotelId: 'b6', name: 'Andaz Delhi', price: 7200, city: 'delhi', commissionPct: 14 },
   { hotelId: 'b7', name: 'The Imperial', price: 11000, city: 'delhi', commissionPct: 7 },
   { hotelId: 'b8', name: 'Leela Palace', price: 9800, city: 'delhi', commissionPct: 10 },
-  { hotelId: 'b9', name: ' HOLTIN ', price: 4990, city: 'mumbai', commissionPct: 20 },
+  { hotelId: 'b9', name: 'Holtin', price: 4990, city: 'mumbai', commissionPct: 20 },
   { hotelId: 'b10', name: 'Radison', price: 5300, city: 'mumbai', commissionPct: 10 },
   { hotelId: 'b11', name: 'the grand palace', price: 4100, city: 'mumbai', commissionPct: 9 },
   { hotelId: 'b12', name: 'Oberoi', price: 7600, city: 'mumbai', commissionPct: 18 },
-  { hotelId: 'b13', name: 'ITC Maratha', price: 6400, city: 'mumbai', commissionPct: 15 },
+  { hotelId: 'b13', name: 'itc maratha', price: 6400, city: 'mumbai', commissionPct: 15 },
   { hotelId: 'b14', name: 'The St. Regis Mumbai', price: 10500, city: 'mumbai', commissionPct: 14 },
   { hotelId: 'b15', name: 'Four Seasons', price: 13000, city: 'mumbai', commissionPct: 7 },
   { hotelId: 'b16', name: 'St Regis', price: 10800, city: 'mumbai', commissionPct: 10 },

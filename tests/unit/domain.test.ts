@@ -1,5 +1,5 @@
 import { mergeBestOffers } from '../../src/domain/merge';
-import { normalizeCity, normalizeName } from '../../src/domain/normalize';
+import { cleanDisplayName, normalizeCity, normalizeName } from '../../src/domain/normalize';
 import { pickBest } from '../../src/domain/pickBest';
 import { parseSupplierResponse } from '../../src/domain/schemas';
 import { deserializeOffer, serializeOffer } from '../../src/domain/serialize';
@@ -28,6 +28,13 @@ describe('normalizeName', () => {
     expect(normalizeName('O’Brien')).toBe('obrien');
   });
 
+  it('strips every apostrophe-like char from Decision 2 (‘ ’ ʼ `)', () => {
+    // Regression: ʼ (U+02BC) and backtick were previously turned into spaces ("o brien").
+    for (const variant of ["O'Brien", 'O‘Brien', 'O’Brien', 'OʼBrien', 'O`Brien']) {
+      expect(normalizeName(variant)).toBe('obrien');
+    }
+  });
+
   it('maps full-width HOLTIN to holtin via NFKC', () => {
     expect(normalizeName('ＨＯＬＴＩＮ')).toBe('holtin');
   });
@@ -38,6 +45,15 @@ describe('normalizeName', () => {
 
   it('keeps Hilton and Hilton Garden Inn separate', () => {
     expect(normalizeName('Hilton')).not.toBe(normalizeName('Hilton Garden Inn'));
+  });
+});
+
+describe('cleanDisplayName', () => {
+  it('trims and collapses whitespace but keeps supplier casing', () => {
+    // Regression: the API used to return " HOLTIN " with the raw spaces.
+    expect(cleanDisplayName(' HOLTIN ')).toBe('HOLTIN');
+    expect(cleanDisplayName('The  Grand\tPalace')).toBe('The Grand Palace');
+    expect(cleanDisplayName('St. Regis')).toBe('St. Regis');
   });
 });
 

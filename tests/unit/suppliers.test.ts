@@ -71,7 +71,7 @@ describe('mock suppliers', () => {
     const a = await request(app).get('/supplierA/hotels').query({ city: 'delhi' });
     const b = await request(app).get('/supplierB/hotels').query({ city: 'delhi' });
     const holtinA = a.body.find((h: { name: string }) => h.name === 'Holtin');
-    const holtinB = b.body.find((h: { name: string }) => h.name.includes('HOLTIN'));
+    const holtinB = b.body.find((h: { name: string }) => h.name === 'Holtin');
     expect(holtinA).toMatchObject({ price: 6000, commissionPct: 10 });
     expect(holtinB).toMatchObject({ price: 5340, commissionPct: 20 });
   });

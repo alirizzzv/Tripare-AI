@@ -2,7 +2,7 @@ import { ApplicationFailure } from '@temporalio/activity';
 import type Redis from 'ioredis';
 import type { Logger } from 'pino';
 import { getEnv, type Env } from '../config/env';
-import { normalizeCity } from '../domain/normalize';
+import { cleanDisplayName, normalizeCity } from '../domain/normalize';
 import { parseSupplierResponse } from '../domain/schemas';
 import type { Offer, SupplierId, SupplierLabel } from '../domain/types';
 import { logger as defaultLogger } from '../lib/logger';
@@ -98,8 +98,9 @@ export function createActivities(deps: ActivityDependencies = {}) {
           (h) => normalizeCity(h.city) === normalizedTarget,
         );
 
+        // WHY: clean the display name at the supplier boundary so the API never returns " HOLTIN ".
         const offers: Offer[] = matchingHotels.map((h) => ({
-          name: h.name,
+          name: cleanDisplayName(h.name),
           price: h.price,
           supplier: supplierLabel,
           commissionPct: h.commissionPct,

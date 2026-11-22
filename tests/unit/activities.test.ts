@@ -49,6 +49,26 @@ describe('fetchSupplierHotels activity', () => {
     );
   });
 
+  it('cleans supplier display names (no leading/trailing/double spaces)', async () => {
+    // Regression: " HOLTIN " used to reach the client unchanged.
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [
+        { hotelId: 'b1', name: ' HOLTIN ', price: 5340, city: 'delhi', commissionPct: 20 },
+        { hotelId: 'b2', name: 'The  Grand Palace', price: 4700, city: 'delhi', commissionPct: 9 },
+      ],
+    } as unknown as Response);
+
+    const activities = createActivities({
+      config: testEnv(),
+      fetchFn: mockFetch as unknown as typeof fetch,
+    });
+
+    const offers = await activities.fetchSupplierHotels({ supplier: 'supplierB', city: 'delhi' });
+    expect(offers.map((o) => o.name)).toEqual(['HOLTIN', 'The Grand Palace']);
+  });
+
   it('skips invalid records and filters wrong-city records', async () => {
     const mixedData = [
       { hotelId: 'a1', name: 'Valid Delhi', price: 5000, city: 'delhi', commissionPct: 12 },
