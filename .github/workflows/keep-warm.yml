@@ -1,0 +1,28 @@
+name: keep-warm
+
+# Free Hugging Face Spaces sleep after ~48h without traffic. Ping the live demo twice a day
+# and run the smoke test so a broken deployment is noticed. Set the repo variable LIVE_URL
+# (Settings -> Secrets and variables -> Actions -> Variables) to enable it.
+on:
+  schedule:
+    - cron: "17 3,15 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    if: ${{ vars.LIVE_URL != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wake the Space (cold start can take a few minutes)
+        run: |
+          for i in $(seq 1 30); do
+            curl -fsS --max-time 20 "${{ vars.LIVE_URL }}/ping" && exit 0
+            sleep 20
+          done
+          exit 1
+      - run: ./scripts/wait-healthy.sh "${{ vars.LIVE_URL }}" 300
+      - run: ./scripts/smoke.sh "${{ vars.LIVE_URL }}"

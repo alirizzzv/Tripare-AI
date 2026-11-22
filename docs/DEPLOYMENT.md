@@ -1,4 +1,44 @@
-# Deployment (single VM, HTTPS)
+# Deployment
+
+Two options:
+
+- **A. Free live demo on Hugging Face Spaces** (what the live URL uses): one container, no card needed.
+- **B. Single VM with HTTPS** (the production-style setup): same Compose stack as local + Caddy.
+
+## A. Hugging Face Space (free)
+
+Spaces expose one port and run one container, so `deploy/huggingface/Dockerfile` packs the same four
+processes (Redis, Temporal dev server, worker, API) into one image, started by `deploy/huggingface/start.sh`.
+If any process exits, the container exits and the platform restarts it. Redis and Temporal listen on
+`127.0.0.1` only, so only the API port (7860) is reachable, over HTTPS.
+
+1. On huggingface.co: **New Space** → name `tripare-ai` → SDK **Docker** → **Blank** → hardware **CPU basic (free)** → Public → Create.
+2. Space **Settings → Variables and secrets → New secret**: `CHAOS_TOKEN` = output of `openssl rand -hex 24`.
+   (Without it, `start.sh` disables the chaos routes.)
+3. Create a **write** access token at huggingface.co/settings/tokens.
+4. From the repo, with everything committed:
+   ```bash
+   ./scripts/publish-hf-space.sh <hf-user>/tripare-ai
+   # username: your HF username, password: the write token
+   ```
+5. Watch the **Logs** tab until `api listening` and `temporal worker started` appear, then:
+   ```bash
+   ./scripts/wait-healthy.sh https://<hf-user>-tripare-ai.hf.space 300
+   ./scripts/smoke.sh https://<hf-user>-tripare-ai.hf.space
+   npm run test:postman:live -- --env-var baseUrl=https://<hf-user>-tripare-ai.hf.space --env-var chaosToken=<token>
+   ```
+6. Optional: set the GitHub repo variable `LIVE_URL` so `.github/workflows/keep-warm.yml` pings the
+   Space twice a day (free Spaces sleep after ~48 h idle) and runs the smoke test.
+
+Test the image locally first: `docker build -f deploy/huggingface/Dockerfile -t tripare-space . &&
+docker run --rm -p 7860:7860 -e CHAOS_TOKEN=test tripare-space`, then `./scripts/smoke.sh http://localhost:7860`.
+
+Limits: Temporal state is in memory (resets on restart; the cache refills on the next request) and the
+Temporal UI is not exposed. A free Space may cold-start after sleeping.
+
+---
+
+# B. Single VM with HTTPS
 
 The production setup is the **same Compose stack** as local, plus an overlay
 (`docker-compose.prod.yml`) that:

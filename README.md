@@ -229,7 +229,11 @@ Import `postman/Hotel-Offer-Orchestrator.postman_collection.json` and `postman/l
 
 ## Deployment
 
-Single VM, same Compose stack + `docker-compose.prod.yml` + Caddy for automatic HTTPS. Redis, the API and
+**Live demo (free):** a Hugging Face Docker Space runs the same code with Redis, the Temporal dev server,
+the worker and the API in one container (Spaces allow one container and one port); Redis and Temporal
+listen on `127.0.0.1` only. See `deploy/huggingface/` and `scripts/publish-hf-space.sh`.
+
+**Production-style:** single VM, same Compose stack + `docker-compose.prod.yml` + Caddy for automatic HTTPS. Redis, the API and
 Temporal gRPC are **not published**; the Temporal UI is bound to `127.0.0.1` and reached via an SSH tunnel.
 ufw is only defense in depth (it does not filter Docker-published ports). Step-by-step guide and a security
 checklist with proof commands: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
@@ -277,7 +281,8 @@ src/
   temporal/       workflows.ts, activities.ts, worker.ts, constants.ts
 tests/unit, tests/integration
 postman/          collection + local/live environments
-scripts/          smoke.sh, wait-healthy.sh, bootstrap-vm.sh, deploy.sh
+scripts/          smoke.sh, wait-healthy.sh, bootstrap-vm.sh, deploy.sh, publish-hf-space.sh
+deploy/huggingface/  single-container image for the free live demo
 docs/DEPLOYMENT.md
 Dockerfile, docker-compose.yml, docker-compose.prod.yml, Caddyfile, Makefile
 ```
