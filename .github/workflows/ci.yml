@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7.4.12
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      # Uses Redis DB 1 and TestWorkflowEnvironment.createLocal() (downloads a Temporal dev server).
+      - run: npm run test:integration
+        env:
+          TEST_REDIS_URL: redis://localhost:6379/1
+      - run: npm run build
+
+  e2e:
+    # Black-box: the same `docker compose up --build` a reviewer runs, then smoke + Postman.
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: docker compose up --build -d --wait
+      - run: ./scripts/wait-healthy.sh http://localhost:3000 120
+      - run: ./scripts/smoke.sh http://localhost:3000
+      - run: npm run test:postman
+      - if: failure()
+        run: docker compose ps && docker compose logs --no-color --tail=200
+      - if: always()
+        run: docker compose down -v
