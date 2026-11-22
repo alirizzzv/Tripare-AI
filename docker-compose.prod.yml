@@ -1,0 +1,70 @@
+# Production overlay for a single VM:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# Needs Docker Compose >= 2.24.4 (for !reset / !override). Requires DOMAIN and CHAOS_TOKEN in .env.
+#
+# WHY !reset / !override: Compose MERGES `ports` lists across files, so simply writing `ports: []`
+# here would still publish the dev ports from docker-compose.yml. Only Caddy publishes 80/443.
+# ufw does NOT filter Docker-published ports; the real protection is not publishing them at all.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  redis:
+    ports: !reset []
+    # Pure cache: no persistence; evict keys that have a TTL if memory is ever full.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "64mb", "--maxmemory-policy", "volatile-lru"]
+    mem_limit: 128m
+    restart: unless-stopped
+    logging: *logging
+
+  temporal:
+    # Loopback only: reachable through `ssh -L 8233:localhost:8233 user@vm`, never from the internet.
+    # 7233 (gRPC) is not published at all; api and worker reach it on the Compose network.
+    ports: !override ["127.0.0.1:8233:8233"]
+    mem_limit: 512m
+    restart: unless-stopped
+    logging: *logging
+
+  api:
+    ports: !reset []
+    environment:
+      ENABLE_CHAOS: "true"
+      CHAOS_TOKEN: ${CHAOS_TOKEN:?set CHAOS_TOKEN in .env}
+      CHAOS_TTL_SECONDS: "60"
+    mem_limit: 256m
+    restart: unless-stopped
+    logging: *logging
+
+  worker:
+    # Webpack bundles the workflow code once at worker start-up; that peak needs headroom.
+    mem_limit: 768m
+    restart: unless-stopped
+    logging: *logging
+
+  caddy:
+    image: caddy:2.11.9
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Named volumes so TLS certificates survive redeploys (avoids Let's Encrypt rate limits).
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 128m
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:

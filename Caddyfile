@@ -1,0 +1,15 @@
+# Automatic HTTPS (Let's Encrypt) for $DOMAIN, reverse-proxied to the api container.
+# Stock Caddy has no rate limiter (that needs a custom build); see README "Known limitations".
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	reverse_proxy api:3000
+}
