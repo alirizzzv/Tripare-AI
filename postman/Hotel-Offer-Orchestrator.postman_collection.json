@@ -1402,7 +1402,7 @@
                 }
               ]
             },
-            "description": "Two full attempts plus a truncated third (~6s schedule-to-close), still under WORKFLOW_WAIT_MS=8000."
+            "description": "Two attempts, then Temporal gives up at the 6s schedule-to-close (measured ~6.1s); still under WORKFLOW_WAIT_MS=8000."
           }
         },
         {

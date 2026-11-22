@@ -158,9 +158,12 @@ Every outage can be reproduced with the chaos switch, e.g.
 - **Timeouts and retries:** `startToCloseTimeout` 3 s, `scheduleToCloseTimeout` 6 s,
   retry `maximumAttempts: 3`, backoff 200 ms × 2 (max 1 s).
   - A **fast failure** (e.g. HTTP 503) gets all 3 attempts within about a second.
-  - A **slow supplier** gets *two full attempts plus a truncated third*: attempt 1 is aborted at 2.5 s,
-    attempt 2 runs ~2.7–5.2 s, attempt 3 would start ~5.6 s and is cut at 6 s by `scheduleToCloseTimeout`.
-    Worst case stays under the API's 8 s wait. *(This is the expected schedule; confirm it in the workflow's event history in the UI.)*
+  - A **slow supplier** gets **two attempts, not three**: attempt 1 is aborted at 2.5 s, attempt 2 runs
+    ~2.7–5.2 s, and then there is no time left for a third attempt before the 6 s `scheduleToCloseTimeout`.
+    **Measured** with chaos `slow 5000` on Supplier B (screenshot below): the workflow finished DEGRADED in
+    **6.07 s** and the event history shows `ACTIVITY_TASK_TIMED_OUT` with Temporal's message
+    *"Not enough time to schedule next retry before activity ScheduleToClose timeout, giving up retrying"*
+    (cause: `Supplier supplierB request timed out after 2500ms`). That stays under the API's 8 s wait.
   - **Non-retryable:** HTTP 4xx (except 408/429), invalid JSON, non-array payloads → `ApplicationFailure.nonRetryable`.
 - **Workflow ID** `hotels-{encodeURIComponent(city)}` + `USE_EXISTING`: concurrent requests share one run
   (covered by an integration test against a real local Temporal server: 20 concurrent starts for one city
@@ -168,7 +171,10 @@ Every outage can be reproduced with the chaos switch, e.g.
   After a run completes, the next miss correctly starts a new run.
 - The API never terminates a slow workflow: it returns 504 and the run still fills the cache.
 
-![Temporal UI](docs/images/temporal-ui.png) <!-- TODO: add screenshot (see docs/DEPLOYMENT.md §4) -->
+![Temporal UI: hotels-delhi run with Supplier B slow. Both fetch activities start in parallel; A finishes in ms, B is retried and given up at 6 s; persistOffers then writes the degraded result.](docs/images/temporal-ui.png)
+
+*Temporal Web UI, `hotels-delhi` with Supplier B set to slow (5 s): the two `fetchSupplierHotels` activities start
+in parallel, A completes in milliseconds, B (orange) times out at 6 s, then `persistOffers` saves the degraded list.*
 
 ## Configuration
 
